@@ -12,6 +12,7 @@ TcpServer::TcpServer(){
 TcpServer::~TcpServer(){
     close(server_fd);
     close(client_fd);
+    cout << "自动释放" << endl;
 }
 
 bool TcpServer::InitServer(int port){

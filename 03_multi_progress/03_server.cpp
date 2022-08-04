@@ -7,7 +7,11 @@
 
 using namespace std;
 
+//设置为全局变量时调用exit(0)可以自动调用析构函数释放资源
+TcpServer tcpServer;
+
 //参考自13.3
+//子进程完成任务后正常结束时的信号处理函数
 static void handle_child(int sig){
     pid_t pid;
     int stat;
@@ -19,9 +23,44 @@ static void handle_child(int sig){
     }
 }
 
+//发送结束信号时父进程的信号处理函数
+//注意这种非正常的退出并不会调用局部的对象的析构函数
+//参考：https://blog.csdn.net/Erice_s/article/details/117385637
+//虽然不用担心内存泄漏，但是由于socket等没有被关闭，因此连接不会立即释放，netstat查看可得
+static void handle_father_exit(int sig){
+    //防止在调用该处理函数的过程中又接收到信号
+    if(sig > 0){
+        signal(SIGINT, SIG_IGN);
+        signal(SIGTERM, SIG_IGN);
+    }
+
+    //先关闭所有的子进程，再关闭自己
+    //0表示向所有子进程发送信号，包括自己（但是自己在一开始屏蔽了15这个信号)
+    kill(0, 15);
+    cout << "父进程" << getpid() << "退出" << endl;
+    exit(0);
+}
+
+static void handle_child_exit(int sig){
+    //防止在调用该处理函数的过程中又接收到信号
+    if(sig > 0){
+        signal(SIGINT, SIG_IGN);
+        signal(SIGTERM, SIG_IGN);
+    }
+    cout << "子进程" << getpid() << "退出" << endl;
+    exit(0);
+}
+
 int main(int argc, char ** argv){
+    //忽略所有的信号
+    for(int i=0; i<=64; i++){
+        signal(i, SIG_IGN);
+    }
     //对子进程结束的信号处理，防止产生僵尸进程
     signal(SIGCHLD, handle_child);
+    //对于ctrlc和kill信号，做退出处理
+    signal(SIGINT, handle_father_exit);
+    signal(SIGTERM, handle_father_exit);
 
     //1.服务端建立，要求输入端口号
     if(argc <= 1){
@@ -30,8 +69,6 @@ int main(int argc, char ** argv){
     }
     //1.1提取参数信息
     int port = atoi(argv[1]);
-    //2.客户端建立socket
-    TcpServer tcpServer;
     //3.初始化并监听
     if(tcpServer.InitServer(port) == false){
         return 0;
@@ -52,6 +89,10 @@ int main(int argc, char ** argv){
         //子进程
         //原理同上，关掉子进程对listen fd的引用
         tcpServer.CloseListen();
+        //fork之后子进程的信号需要重新设置为子进程对应的处理函数
+        //不重新设置的话调用的仍然是父进程的信号处理函数
+        signal(SIGINT, handle_child_exit);
+        signal(SIGTERM, handle_child_exit);
         //5.从该连接接受数据
         char buffer[BUFF_SIZE];
         while(true){
