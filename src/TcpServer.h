@@ -39,6 +39,10 @@ public:
     bool Send(const char * buffer, int buflen);
     //接收报文
     bool Recv(char * buffer, int buflen);
+
+    void CloseClient();
+
+    void CloseListen();
 };
 
 #endif

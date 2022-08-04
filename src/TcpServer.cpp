@@ -80,3 +80,11 @@ bool TcpServer::Recv(char * buffer, int buflen){
     }
     return true;
 }
+
+void TcpServer::CloseClient(){
+    close(client_fd);
+}
+
+void TcpServer::CloseListen(){
+    close(server_fd);
+}
