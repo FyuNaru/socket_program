@@ -76,16 +76,29 @@ void addfd(int epfd, int fd, int event, bool isET){
 //lt模式
 //需要用到epfd：为新连接上的客户添加新的事件
 //需要用到listenfd：比较某个发生事件的fd是否为listenfd
-//需要用到TcpServer类
-void lt(int event_count, epoll_event * event_list, int epfd){
+//修改为了不需要用到TcpServer类
+void lt(int event_count, epoll_event * event_list, int epfd, int listenfd){
     for(int i=0; i<event_count; i++){
         //获取对应事件的fd
         int event_fd = event_list[i].data.fd;
-        if(event_fd == tcpServer.server_fd){
+        if(event_fd == listenfd){
             //server fd上有事件，即有新的连接：打开socket，为客户增加一个监听的event
             if((event_list[i].events & EPOLLIN) == 1){
-                tcpServer.Accept();
-                int client_fd = tcpServer.client_fd;
+                
+                /* ************************************* */
+                //接受一个链接, accept返回-1表示失败
+                struct sockaddr_in client_socket_addr;
+                //client_socket_len必须初始化否则accept会出错
+                socklen_t client_socket_len = sizeof(struct sockaddr_in);
+                int client_fd = accept(listenfd, (struct sockaddr *)&client_socket_addr, (socklen_t*)&client_socket_len);
+                if(client_fd < 0){
+                    cout << "error: accept:" << strerror(errno) << endl;
+                    return;
+                } else {
+                    cout << "与客户端: " << "(ip: " << inet_ntoa(client_socket_addr.sin_addr);
+                    cout << ", port: " << ntohs(client_socket_addr.sin_port) << ") 建立了连接" << endl;
+                }
+                /* ************************************* */
                 addfd(epfd, client_fd, EPOLLIN, false);
             } else {
                 cout << "未知事件发生" << endl;
@@ -98,16 +111,28 @@ void lt(int event_count, epoll_event * event_list, int epfd){
             //正确的表现为：未被处理完的事件重新加回到发生的事件集合中，下次调用epoll_wait时重新产生
             cout << "第 " << lt_count << " 轮触发 " << event_fd << " 上的事件" << endl;
             memset(buffer, '\0', BUFF_SIZE);
-            if(tcpServer.Recv(buffer, BUFF_SIZE-1) == false){
-                //发生了断开：关闭socket
-                //貌似不用手动删除event，关闭fd后对应的事件都会被删除
-                //注意这里一定要关指定的fd，不能直接调用tcpServer的fd，会关错fd导致死循环
-                //例如有5 6两个fd，5先结束，关闭5时不小心关掉了6.会导致5还残留一个关闭的事件没有解决
-                //会无限循环，不停的在recv处出错。
+            // if(tcpServer.Recv(buffer, BUFF_SIZE-1) == false){
+            //     //发生了断开：关闭socket
+            //     //貌似不用手动删除event，关闭fd后对应的事件都会被删除
+            //     //注意这里一定要关指定的fd，不能直接调用tcpServer的fd，会关错fd导致死循环
+            //     //例如有5 6两个fd，5先结束，关闭5时不小心关掉了6.会导致5还残留一个关闭的事件没有解决
+            //     //会无限循环，不停的在recv处出错。
+            //     close(event_fd);
+            //     cout << "关闭" << event_fd << endl;
+            // }
+            // else{
+            //     cout << "从client_fd(" << event_fd << ")接收到数据：" << buffer << endl;
+            // }
+            ssize_t recv_len = recv(event_fd, buffer, BUFF_SIZE-1, 0);
+            if(recv_len <= 0){
+                //recv返回-1表示出错，返回0表示连接已经断开
+                if(recv_len == 0){
+                    cout << "连接client_fd(" << event_fd << ")断开" << endl;
+                } else {
+                    cout << "error : recv :" << strerror(errno) << endl;
+                }
                 close(event_fd);
-                cout << "关闭" << event_fd << endl;
-            }
-            else{
+            } else{
                 cout << "从client_fd(" << event_fd << ")接收到数据：" << buffer << endl;
             }
         } else {
@@ -155,7 +180,7 @@ int main(int argc, char ** argv){
         }
         //使用LT模式
         lt_count++;
-        lt(event_count, ep_event_list, epfd);
+        lt(event_count, ep_event_list, epfd, tcpServer.server_fd);
     }
     
     //6.退出程序时自动调用析构函数释放socket

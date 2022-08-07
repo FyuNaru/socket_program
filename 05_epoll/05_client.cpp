@@ -21,7 +21,7 @@ int main(int argc, char ** argv){
         return 0;
     }
     //4.发送消息
-    for(int i=0; i<10; i++){
+    for(int i=0; i<5; i++){
         //注意应该是const常量字符串
         const char * buffer = "aaaaaaaaaabbbbbbbbbbccc";
         tcpClient.Send(buffer, strlen(buffer));
