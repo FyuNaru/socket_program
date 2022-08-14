@@ -33,7 +33,14 @@ int main(int argc, char ** argv){
     //尝试再发一次报文
     //然而从结果发现，如果服务器端将对应的fd关闭，客户这里仍然可以发送报文，只不过接收不到了
     //需要重新建立链接。至于发送的报文哪里去了这个目前不太懂
+    //https://blog.csdn.net/qq_37253168/article/details/121522032
+    //原因解答，事实上只可以再调用send一次，下次就会报告链接不可用
     const char * buffer = "xxxxxxx";
+    if(tcpClient.Send(buffer, strlen(buffer))){
+        cout << "发送了一个报文：" << buffer << endl;
+    } else {
+        cout << "链接已被关闭" << endl;
+    }
     if(tcpClient.Send(buffer, strlen(buffer))){
         cout << "发送了一个报文：" << buffer << endl;
     } else {
